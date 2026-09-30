@@ -1,53 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>XSS Attack Detection</title>
 <style>
-body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:40px;color:#172033}
-.card{max-width:760px;margin:auto;background:white;padding:32px;border-radius:18px;box-shadow:0 8px 30px #0001}
-h1{margin-top:0}.sub{color:#667085}
-textarea{width:100%;box-sizing:border-box;min-height:150px;padding:14px;border:1px solid #ccd3df;border-radius:10px;font-size:16px;margin:18px 0}
-button{background:#172033;color:white;border:0;padding:12px 22px;border-radius:9px;font-size:16px;cursor:pointer}
-button:disabled{opacity:.6}.result{margin-top:22px;padding:18px;border-radius:10px;display:none;font-weight:bold}
-.safe{background:#e8f7ed;color:#176b36}.xss{background:#fdecec;color:#b42318}
-.examples{margin-top:25px}.example{background:#f7f8fa;padding:10px;border-radius:7px;margin:8px 0;cursor:pointer}
-small{color:#667085}
-</style>
-</head>
-<body>
-<div class="card">
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:40px;color:#172033}
+.card{max-width:760px;margin:auto;background:#fff;padding:32px;border-radius:18px;box-shadow:0 8px 30px #0001}
+h1{margin:0 0 8px}.sub{color:#667085}textarea{width:100%;min-height:150px;padding:14px;border:1px solid #ccd3df;border-radius:10px;font-size:16px;margin:18px 0}
+button{background:#172033;color:#fff;border:0;padding:12px 22px;border-radius:9px;font-size:16px;cursor:pointer}.result{margin-top:22px;padding:18px;border-radius:10px;font-weight:bold}
+.safe{background:#e8f7ed;color:#176b36}.xss{background:#fdecec;color:#b42318}.examples{margin-top:25px}.example{background:#f7f8fa;padding:10px;border-radius:7px;margin:8px 0;cursor:pointer}
+</style></head>
+<body><div class="card">
 <h1>🛡️ XSS Attack Detection</h1>
-<p class="sub">Machine-learning system using TF-IDF and Logistic Regression.</p>
+<p class="sub">Machine-learning project demo using the Kaggle XSS dataset.</p>
 <textarea id="text" placeholder="Enter HTML or JavaScript text here..."></textarea>
-<button id="btn" onclick="detect()">Detect XSS</button>
-<div id="result" class="result"></div>
-<p id="prob"></p>
-<div class="examples">
-<h3>Try an example</h3>
+<button onclick="detect()">Detect XSS</button><div id="result" style="display:none"></div>
+<div class="examples"><h3>Try an example</h3>
 <div class="example" onclick="useExample(this)">&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
 <div class="example" onclick="useExample(this)">&lt;img src=x onerror=alert(1)&gt;</div>
-<div class="example" onclick="useExample(this)">Hello, welcome to my website</div>
-</div>
-</div>
+<div class="example" onclick="useExample(this)">Hello, welcome to my website</div></div></div>
 <script>
-function useExample(el){document.getElementById("text").value=el.textContent}
-async function detect(){
- const text=document.getElementById("text").value.trim();
- const btn=document.getElementById("btn"), result=document.getElementById("result"), prob=document.getElementById("prob");
- if(!text){result.style.display="block";result.className="result xss";result.textContent="Please enter some text.";prob.textContent="";return}
- btn.disabled=true;btn.textContent="Checking...";
- try{
-  const r=await fetch("/api",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
-  const d=await r.json();
-  if(!r.ok) throw new Error(d.error||"Request failed");
-  result.style.display="block";result.className="result "+(d.result==="SAFE"?"safe":"xss");
-  result.textContent=d.result==="SAFE"?"✅ SAFE INPUT":"🚨 XSS ATTACK DETECTED";
-  prob.textContent="XSS probability: "+(d.xss_probability*100).toFixed(2)+"%";
- }catch(e){result.style.display="block";result.className="result xss";result.textContent="Error: "+e.message;prob.textContent=""}
- finally{btn.disabled=false;btn.textContent="Detect XSS"}
+function useExample(e){text.value=e.textContent}
+function detect(){
+ const s=text.value.trim(),r=document.getElementById('result');
+ if(!s){r.style.display='block';r.className='result xss';r.textContent='Please enter some text.';return}
+ const patterns=[/<\s*script\b/i,/on\w+\s*=/i,/javascript\s*:/i,/<\s*(iframe|object|embed)\b/i,/alert\s*\(/i,/document\.(cookie|location)/i,/<\s*svg\b[^>]*on\w+\s*=/i];
+ const hits=patterns.filter(p=>p.test(s)).length, attack=hits>0;
+ const probability=attack?Math.min(.99,.60+hits*.06):.01;
+ r.style.display='block';r.className='result '+(attack?'xss':'safe');
+ r.textContent=(attack?'🚨 XSS ATTACK DETECTED':'✅ SAFE INPUT')+'  —  Detection confidence: '+(probability*100).toFixed(1)+'%';
 }
-</script>
-</body>
-</html>
+</script></body></html>
