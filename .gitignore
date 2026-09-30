@@ -3,7 +3,7 @@ __pycache__/
 .venv/
 venv/
 .env
-models/*.joblib
 data/*.csv
 data/*.zip
 results/
+# Keep the trained model deployable on Vercel.
