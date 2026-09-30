@@ -1,7 +1,6 @@
 import json
 import os
-import joblib
-from http.server import BaseHTTPRequestHandler
+import re
 
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -9,24 +8,63 @@ MODEL_PATH = os.path.join(
     "xss_detector.joblib",
 )
 
-model = joblib.load(MODEL_PATH)
+_model = None
+
+def load_model():
+    global _model
+    if _model is None and os.path.exists(MODEL_PATH):
+        try:
+            import joblib
+            _model = joblib.load(MODEL_PATH)
+        except Exception:
+            _model = False
+    return _model
+
+def fallback_detect(text):
+    # Safe fallback keeps the deployed demo available if the optional
+    # serialized ML model is not packaged with the deployment.
+    patterns = [
+        r"<\s*script\b",
+        r"on\w+\s*=",
+        r"javascript\s*:",
+        r"<\s*iframe\b",
+        r"<\s*svg\b[^>]*on\w+\s*=",
+        r"<\s*img\b[^>]*on\w+\s*=",
+        r"alert\s*\(",
+        r"document\.(cookie|location)",
+        r"<\s*body\b[^>]*on\w+\s*=",
+    ]
+    score = sum(bool(re.search(p, text, re.IGNORECASE)) for p in patterns)
+    return score > 0, min(0.99, 0.60 + score * 0.05) if score else 0.01
+
+def predict(text):
+    model = load_model()
+    if model:
+        prediction = int(model.predict([text])[0])
+        probability = float(model.predict_proba([text])[0][1])
+        return prediction == 1, probability, "ML model"
+
+    attack, probability = fallback_detect(text)
+    return attack, probability, "fallback detector"
+
+def send_json(handler, status, data):
+    body = json.dumps(data).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+from http.server import BaseHTTPRequestHandler
 
 class handler(BaseHTTPRequestHandler):
-    def _send(self, status, data):
-        body = json.dumps(data).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-        self.wfile.write(body)
-
     def do_OPTIONS(self):
-        self._send(200, {"status": "ok"})
+        send_json(self, 200, {"status": "ok"})
 
     def do_GET(self):
-        self._send(200, {
+        send_json(self, 200, {
             "status": "ok",
             "message": "XSS detection API is running"
         })
@@ -39,15 +77,14 @@ class handler(BaseHTTPRequestHandler):
             text = str(data.get("text", "")).strip()
 
             if not text:
-                self._send(400, {"error": "Please enter text."})
+                send_json(self, 400, {"error": "Please enter text."})
                 return
 
-            prediction = int(model.predict([text])[0])
-            probability = float(model.predict_proba([text])[0][1])
-
-            self._send(200, {
-                "result": "XSS ATTACK" if prediction == 1 else "SAFE",
-                "xss_probability": round(probability, 4)
+            attack, probability, detector = predict(text)
+            send_json(self, 200, {
+                "result": "XSS ATTACK" if attack else "SAFE",
+                "xss_probability": round(probability, 4),
+                "detector": detector
             })
         except Exception as e:
-            self._send(500, {"error": str(e)})
+            send_json(self, 500, {"error": str(e)})
