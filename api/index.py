@@ -12,6 +12,10 @@ MODEL_PATH = os.path.join(
 
 _model = None
 
+# Runtime registry of malicious payload fingerprints.
+# SHA-256 is used as the exact-payload identifier.
+known_xss_fingerprints = set()
+
 HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -164,11 +168,20 @@ class handler(BaseHTTPRequestHandler):
                 })
                 return
 
+            fingerprint_status = "not applicable"
+            if attack:
+                if file_hash in known_xss_fingerprints:
+                    fingerprint_status = "previously seen XSS fingerprint"
+                else:
+                    known_xss_fingerprints.add(file_hash)
+                    fingerprint_status = "new XSS fingerprint"
+
             send_json(self,200,{
                 "result":"XSS ATTACK" if attack else "SAFE",
                 "xss_probability":round(probability,4),
                 "detector":detector,
-                "sha256":file_hash
+                "sha256":file_hash,
+                "fingerprint_status":fingerprint_status
             })
         except Exception as e:
             send_json(self,500,{"error":str(e)})
