@@ -33,7 +33,7 @@ button:disabled{opacity:.6;cursor:wait}
 <div class="crypto">
 <h3>🔐 Cryptographic Fingerprint</h3>
 <p class="sub">SHA-256 generates a cryptographic fingerprint for the exact input submitted above.</p>
-<div id="hash" class="hash">The fingerprint will appear after detection.</div>
+<div id="hash" class="hash">The fingerprint will appear after detection.</div><div id="fpstatus" class="meta"></div>
 </div>
 
 <div class="examples">
@@ -48,7 +48,7 @@ button:disabled{opacity:.6;cursor:wait}
 function useExample(e){document.getElementById('text').value=e.textContent}
 async function detect(){
  const s=document.getElementById('text').value.trim();
- const r=document.getElementById('result'),b=document.getElementById('btn'),h=document.getElementById('hash');
+ const r=document.getElementById('result'),b=document.getElementById('btn'),h=document.getElementById('hash'),p=document.getElementById('fpstatus');
  if(!s){r.style.display='block';r.className='result xss';r.textContent='Please enter some text.';return}
  b.disabled=true;b.textContent='Checking...';
  try{
@@ -60,6 +60,13 @@ async function detect(){
   r.innerHTML=(attack?'🚨 XSS ATTACK DETECTED':'✅ SAFE INPUT')+
    '<div class="meta">Confidence: '+(Number(data.xss_probability)*100).toFixed(1)+'%</div>';
   h.textContent='SHA-256: '+data.sha256;
+  if(attack){
+   p.textContent=data.fingerprint_status==='new XSS fingerprint'
+    ? '🔎 New XSS fingerprint recorded.'
+    : '🔎 This XSS payload fingerprint was seen before.';
+  }else{
+   p.textContent='The fingerprint is available as the unique identifier for this input.';
+  }
  }catch(e){
   r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.';
  }finally{b.disabled=false;b.textContent='Detect XSS'}
