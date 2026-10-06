@@ -18,6 +18,7 @@ HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>XSS Attack Detection</title>
+<meta name="description" content="Machine-learning based XSS attack detection with SHA-256 cryptographic fingerprinting.">
 <style>
 *{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:40px;color:#172033}
 .card{max-width:760px;margin:auto;background:#fff;padding:32px;border-radius:18px;box-shadow:0 8px 30px #0001}
@@ -35,8 +36,13 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 <p class="sub">ML-based XSS detection with SHA-256 cryptographic fingerprinting.</p>
 <textarea id="text" placeholder="Enter HTML or JavaScript text here..."></textarea>
 <button id="btn" onclick="detect()">Detect XSS</button>
+<div style="margin-top:14px">
+<input id="refhash" placeholder="Paste original SHA-256 hash for integrity verification" style="width:100%;padding:12px;border:1px solid #ccd3df;border-radius:9px;font-size:14px">
+<button onclick="verifyHash()" style="margin-top:8px">Verify Integrity</button>
+</div>
 <div id="result" style="display:none"></div>
-<div class="examples"><h3>Try an example</h3>
+<div class="examples">
+<h3>Try an example</h3>
 <div class="example" onclick="useExample(this)">&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
 <div class="example" onclick="useExample(this)">&lt;img src=x onerror=alert(1)&gt;</div>
 <div class="example" onclick="useExample(this)">Hello, welcome to my website</div>
@@ -45,7 +51,8 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 <script>
 function useExample(e){document.getElementById('text').value=e.textContent}
 async function detect(){
- const s=document.getElementById('text').value.trim(),r=document.getElementById('result'),b=document.getElementById('btn');
+ const s=document.getElementById('text').value.trim();
+ const r=document.getElementById('result'),b=document.getElementById('btn');
  if(!s){r.style.display='block';r.className='result xss';r.textContent='Please enter some text.';return}
  b.disabled=true;b.textContent='Checking...';
  try{
@@ -61,6 +68,19 @@ async function detect(){
  }catch(e){
   r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.';
  }finally{b.disabled=false;b.textContent='Detect XSS'}
+}
+async function verifyHash(){
+ const s=document.getElementById('text').value.trim(),h=document.getElementById('refhash').value.trim(),r=document.getElementById('result');
+ if(!s||!h){r.style.display='block';r.className='result xss';r.textContent='Enter the input and reference SHA-256 hash.';return}
+ try{
+  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',text:s,reference_hash:h})});
+  const data=await response.json();
+  if(!response.ok) throw new Error(data.error||'Verification error');
+  r.style.display='block';r.className='result '+(data.match?'safe':'xss');
+  r.innerHTML=(data.match?'✅ INTEGRITY VERIFIED':'⚠️ INPUT MODIFIED')+
+   '<div class="meta">Current SHA-256: '+data.sha256+'</div>'+
+   '<div class="meta">'+(data.match?'The current input matches the reference hash.':'The current input does not match the reference hash.')+'</div>';
+ }catch(e){r.style.display='block';r.className='result xss';r.textContent=e.message}
 }
 </script>
 </body>
