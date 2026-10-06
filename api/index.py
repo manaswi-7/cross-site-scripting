@@ -28,7 +28,7 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 .safe{background:#e8f7ed;color:#176b36}.xss{background:#fdecec;color:#b42318}
 .examples{margin-top:25px}.example{background:#f7f8fa;padding:10px;border-radius:7px;margin:8px 0;cursor:pointer}
 .meta{margin-top:8px;font-size:13px;font-weight:normal;opacity:.8;word-break:break-all}
-</style>
+.crypto{margin-top:24px;padding:18px;background:#f7f8fa;border-radius:10px}.crypto p{color:#667085;font-size:14px}.crypto .small{min-height:90px;margin:8px 0 14px}.label{font-weight:bold;margin-top:14px}</style>
 </head>
 <body>
 <div class="card">
@@ -36,16 +36,17 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 <p class="sub">ML-based XSS detection with SHA-256 cryptographic fingerprinting.</p>
 <textarea id="text" placeholder="Enter HTML or JavaScript text here..."></textarea>
 <button id="btn" onclick="detect()">Detect XSS</button>
-<div style="margin-top:18px;padding:16px;background:#f7f8fa;border-radius:10px">
-<strong>Step 1: Create trusted reference</strong>
-<p style="margin:8px 0;color:#667085;font-size:14px">Enter trusted/original content above, then generate its SHA-256 fingerprint.</p>
-<button onclick="generateReference()">Generate Reference Hash</button>
-<div id="reference" class="meta" style="margin-top:12px;display:none"></div>
-</div>
-<div style="margin-top:14px">
-<strong>Step 2: Verify current content</strong>
-<p style="margin:8px 0;color:#667085;font-size:14px">Edit the input above if needed, then compare it with the saved reference.</p>
-<button onclick="verifyHash()">Verify Integrity</button>
+<div class="crypto">
+<h3>🔐 Integrity & Attack Analysis</h3>
+<p>First save trusted content. Later, analyze the current content to see whether it was modified and whether the modification contains XSS.</p>
+<div class="label">Trusted / Original Content</div>
+<textarea id="trusted" class="small" placeholder="Enter the trusted original content..."></textarea>
+<button onclick="saveTrusted()">Save Trusted Fingerprint</button>
+<div id="trustedStatus" class="meta"></div>
+<div class="label">Current Content</div>
+<textarea id="current" class="small" placeholder="Enter the current content to verify and analyze..."></textarea>
+<button onclick="analyzeCurrent()">Compare & Analyze</button>
+<div id="cryptoResult"></div>
 </div>
 <div id="result" style="display:none"></div>
 <div class="examples">
@@ -56,54 +57,56 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 </div>
 </div>
 <script>
+let trustedHash = '';
 function useExample(e){document.getElementById('text').value=e.textContent}
+async function post(data){
+ const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+ const result=await response.json();
+ if(!response.ok) throw new Error(result.error||'API error');
+ return result;
+}
 async function detect(){
  const s=document.getElementById('text').value.trim();
  const r=document.getElementById('result'),b=document.getElementById('btn');
  if(!s){r.style.display='block';r.className='result xss';r.textContent='Please enter some text.';return}
  b.disabled=true;b.textContent='Checking...';
  try{
-  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:s})});
-  const data=await response.json();
-  if(!response.ok) throw new Error(data.error||'API error');
+  const data=await post({text:s});
   const attack=data.result==='XSS ATTACK';
   r.style.display='block';r.className='result '+(attack?'xss':'safe');
   r.innerHTML=(attack?'🚨 XSS ATTACK DETECTED':'✅ SAFE INPUT')+
    ' — Detection confidence: '+(Number(data.xss_probability)*100).toFixed(1)+'%'+
    '<div class="meta">Detector: '+data.detector+'</div>'+
    '<div class="meta">SHA-256: '+data.sha256+'</div>';
- }catch(e){
-  r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.';
- }finally{b.disabled=false;b.textContent='Detect XSS'}
+ }catch(e){r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.'}
+ finally{b.disabled=false;b.textContent='Detect XSS'}
 }
-async function generateReference(){
- const s=document.getElementById('text').value.trim(),ref=document.getElementById('reference');
- if(!s){ref.style.display='block';ref.textContent='Enter trusted/original content first.';return}
+async function saveTrusted(){
+ const s=document.getElementById('trusted').value.trim(),r=document.getElementById('trustedStatus');
+ if(!s){r.textContent='Enter trusted content first.';return}
  try{
-  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'hash',text:s})});
-  const data=await response.json();
-  if(!response.ok) throw new Error(data.error||'Hash generation error');
-  localStorage.setItem('xssReferenceHash',data.sha256);
-  ref.style.display='block';
-  ref.innerHTML='Reference SHA-256: <span style="font-family:monospace">'+data.sha256+'</span><br><button onclick="copyReference()" style="margin-top:8px">Copy Hash</button>';
- }catch(e){ref.style.display='block';ref.textContent=e.message}
+  const data=await post({action:'hash',text:s});
+  trustedHash=data.sha256;
+  r.innerHTML='✅ Trusted fingerprint saved: <span style="font-family:monospace">'+trustedHash+'</span>';
+ }catch(e){r.textContent=e.message}
 }
-function copyReference(){
- const h=localStorage.getItem('xssReferenceHash');
- if(h) navigator.clipboard.writeText(h);
-}
-async function verifyHash(){
- const s=document.getElementById('text').value.trim(),h=localStorage.getItem('xssReferenceHash'),r=document.getElementById('result');
- if(!s||!h){r.style.display='block';r.className='result xss';r.textContent='Generate a reference hash first, then enter the current content.';return}
+async function analyzeCurrent(){
+ const s=document.getElementById('current').value.trim(),r=document.getElementById('cryptoResult');
+ if(!trustedHash){r.className='result xss';r.textContent='Save the trusted content fingerprint first.';return}
+ if(!s){r.className='result xss';r.textContent='Enter current content first.';return}
  try{
-  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',text:s,reference_hash:h})});
-  const data=await response.json();
-  if(!response.ok) throw new Error(data.error||'Verification error');
-  r.style.display='block';r.className='result '+(data.match?'safe':'xss');
-  r.innerHTML=(data.match?'✅ INTEGRITY VERIFIED':'⚠️ INPUT MODIFIED')+
-   '<div class="meta">Current SHA-256: '+data.sha256+'</div>'+
-   '<div class="meta">'+(data.match?'The current input matches the reference hash.':'The current input does not match the reference hash.')+'</div>';
- }catch(e){r.style.display='block';r.className='result xss';r.textContent=e.message}
+  const v=await post({action:'verify',text:s,reference_hash:trustedHash});
+  const d=await post({text:s});
+  const attack=d.result==='XSS ATTACK';
+  r.className='result '+(v.match&&!attack?'safe':'xss');
+  r.innerHTML=(v.match?'✅ INTEGRITY VERIFIED':'⚠️ CONTENT MODIFIED')+
+   '<div class="meta">Trusted SHA-256: '+trustedHash+'</div>'+
+   '<div class="meta">Current SHA-256: '+v.sha256+'</div>'+
+   '<div class="meta">Hash Match: '+(v.match?'YES':'NO')+'</div>'+
+   '<hr style="border:0;border-top:1px solid #ddd;margin:12px 0">'+
+   (attack?'🚨 ML RESULT: XSS ATTACK':'✅ ML RESULT: SAFE')+
+   '<div class="meta">Detection confidence: '+(Number(d.xss_probability)*100).toFixed(1)+'%</div>';
+ }catch(e){r.className='result xss';r.textContent=e.message}
 }
 </script>
 </body>
