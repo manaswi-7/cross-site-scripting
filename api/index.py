@@ -131,6 +131,22 @@ class handler(BaseHTTPRequestHandler):
 
             attack, probability, detector = predict(text)
             file_hash = sha256_text(text)
+            action = data.get("action", "detect")
+
+            if action == "hash":
+                send_json(self,200,{"sha256":file_hash})
+                return
+
+            if action == "verify":
+                reference_hash = str(data.get("reference_hash","")).strip().lower()
+                if not re.fullmatch(r"[0-9a-f]{64}", reference_hash):
+                    send_json(self,400,{"error":"Please enter a valid 64-character SHA-256 hash."})
+                    return
+                send_json(self,200,{
+                    "match": file_hash == reference_hash,
+                    "sha256": file_hash
+                })
+                return
 
             send_json(self,200,{
                 "result":"XSS ATTACK" if attack else "SAFE",
