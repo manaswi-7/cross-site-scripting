@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -21,16 +22,19 @@ HTML = """<!DOCTYPE html>
 *{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:40px;color:#172033}
 .card{max-width:760px;margin:auto;background:#fff;padding:32px;border-radius:18px;box-shadow:0 8px 30px #0001}
 h1{margin:0 0 8px}.sub{color:#667085}textarea{width:100%;min-height:150px;padding:14px;border:1px solid #ccd3df;border-radius:10px;font-size:16px;margin:18px 0}
-button{background:#172033;color:#fff;border:0;padding:12px 22px;border-radius:9px;font-size:16px;cursor:pointer}.result{margin-top:22px;padding:18px;border-radius:10px;font-weight:bold}
-.safe{background:#e8f7ed;color:#176b36}.xss{background:#fdecec;color:#b42318}.examples{margin-top:25px}.example{background:#f7f8fa;padding:10px;border-radius:7px;margin:8px 0;cursor:pointer}
+button{background:#172033;color:#fff;border:0;padding:12px 22px;border-radius:9px;font-size:16px;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;border-radius:10px;font-weight:bold}
+.safe{background:#e8f7ed;color:#176b36}.xss{background:#fdecec;color:#b42318}
+.examples{margin-top:25px}.example{background:#f7f8fa;padding:10px;border-radius:7px;margin:8px 0;cursor:pointer}
+.meta{margin-top:8px;font-size:13px;font-weight:normal;opacity:.8;word-break:break-all}
 </style>
 </head>
 <body>
 <div class="card">
 <h1>🛡️ XSS Attack Detection</h1>
-<p class="sub">Machine-learning project demo using the Kaggle XSS dataset.</p>
+<p class="sub">ML-based XSS detection with SHA-256 cryptographic fingerprinting.</p>
 <textarea id="text" placeholder="Enter HTML or JavaScript text here..."></textarea>
-<button onclick="detect()">Detect XSS</button>
+<button id="btn" onclick="detect()">Detect XSS</button>
 <div id="result" style="display:none"></div>
 <div class="examples"><h3>Try an example</h3>
 <div class="example" onclick="useExample(this)">&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
@@ -41,17 +45,22 @@ button{background:#172033;color:#fff;border:0;padding:12px 22px;border-radius:9p
 <script>
 function useExample(e){document.getElementById('text').value=e.textContent}
 async function detect(){
- const s=document.getElementById('text').value.trim(),r=document.getElementById('result');
+ const s=document.getElementById('text').value.trim(),r=document.getElementById('result'),b=document.getElementById('btn');
  if(!s){r.style.display='block';r.className='result xss';r.textContent='Please enter some text.';return}
+ b.disabled=true;b.textContent='Checking...';
  try{
   const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:s})});
   const data=await response.json();
+  if(!response.ok) throw new Error(data.error||'API error');
   const attack=data.result==='XSS ATTACK';
   r.style.display='block';r.className='result '+(attack?'xss':'safe');
-  r.textContent=(attack?'🚨 XSS ATTACK DETECTED':'✅ SAFE INPUT')+' — Detection confidence: '+(Number(data.xss_probability)*100).toFixed(1)+'%';
+  r.innerHTML=(attack?'🚨 XSS ATTACK DETECTED':'✅ SAFE INPUT')+
+   ' — Detection confidence: '+(Number(data.xss_probability)*100).toFixed(1)+'%'+
+   '<div class="meta">Detector: '+data.detector+'</div>'+
+   '<div class="meta">SHA-256: '+data.sha256+'</div>';
  }catch(e){
-  r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable.';
- }
+  r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.';
+ }finally{b.disabled=false;b.textContent='Detect XSS'}
 }
 </script>
 </body>
@@ -86,6 +95,9 @@ def predict(text):
     attack, probability = fallback_detect(text)
     return attack, probability, "fallback detector"
 
+def sha256_text(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
 def send_json(h, status, data):
     body = json.dumps(data).encode("utf-8")
     h.send_response(status)
@@ -116,11 +128,15 @@ class handler(BaseHTTPRequestHandler):
             if not text:
                 send_json(self,400,{"error":"Please enter text."})
                 return
+
             attack, probability, detector = predict(text)
+            file_hash = sha256_text(text)
+
             send_json(self,200,{
                 "result":"XSS ATTACK" if attack else "SAFE",
                 "xss_probability":round(probability,4),
-                "detector":detector
+                "detector":detector,
+                "sha256":file_hash
             })
         except Exception as e:
             send_json(self,500,{"error":str(e)})
