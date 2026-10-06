@@ -22,9 +22,16 @@ button:disabled{opacity:.6;cursor:wait}.result{margin-top:22px;padding:18px;bord
 <p class="sub">ML-based XSS detection with SHA-256 cryptographic fingerprinting.</p>
 <textarea id="text" placeholder="Enter HTML or JavaScript text here..."></textarea>
 <button id="btn" onclick="detect()">Detect XSS</button>
+<div style="margin-top:18px;padding:16px;background:#f7f8fa;border-radius:10px">
+<strong>Step 1: Create trusted reference</strong>
+<p style="margin:8px 0;color:#667085;font-size:14px">Enter trusted/original content above, then generate its SHA-256 fingerprint.</p>
+<button onclick="generateReference()">Generate Reference Hash</button>
+<div id="reference" class="meta" style="margin-top:12px;display:none"></div>
+</div>
 <div style="margin-top:14px">
-<input id="refhash" placeholder="Paste original SHA-256 hash for integrity verification" style="width:100%;padding:12px;border:1px solid #ccd3df;border-radius:9px;font-size:14px">
-<button onclick="verifyHash()" style="margin-top:8px">Verify Integrity</button>
+<strong>Step 2: Verify current content</strong>
+<p style="margin:8px 0;color:#667085;font-size:14px">Edit the input above if needed, then compare it with the saved reference.</p>
+<button onclick="verifyHash()">Verify Integrity</button>
 </div>
 <div id="result" style="display:none"></div>
 <div class="examples">
@@ -55,9 +62,25 @@ async function detect(){
   r.style.display='block';r.className='result xss';r.textContent='Detection service unavailable. Please try again.';
  }finally{b.disabled=false;b.textContent='Detect XSS'}
 }
+async function generateReference(){
+ const s=document.getElementById('text').value.trim(),ref=document.getElementById('reference');
+ if(!s){ref.style.display='block';ref.textContent='Enter trusted/original content first.';return}
+ try{
+  const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'hash',text:s})});
+  const data=await response.json();
+  if(!response.ok) throw new Error(data.error||'Hash generation error');
+  localStorage.setItem('xssReferenceHash',data.sha256);
+  ref.style.display='block';
+  ref.innerHTML='Reference SHA-256: <span style="font-family:monospace">'+data.sha256+'</span><br><button onclick="copyReference()" style="margin-top:8px">Copy Hash</button>';
+ }catch(e){ref.style.display='block';ref.textContent=e.message}
+}
+function copyReference(){
+ const h=localStorage.getItem('xssReferenceHash');
+ if(h) navigator.clipboard.writeText(h);
+}
 async function verifyHash(){
- const s=document.getElementById('text').value.trim(),h=document.getElementById('refhash').value.trim(),r=document.getElementById('result');
- if(!s||!h){r.style.display='block';r.className='result xss';r.textContent='Enter the input and reference SHA-256 hash.';return}
+ const s=document.getElementById('text').value.trim(),h=localStorage.getItem('xssReferenceHash'),r=document.getElementById('result');
+ if(!s||!h){r.style.display='block';r.className='result xss';r.textContent='Generate a reference hash first, then enter the current content.';return}
  try{
   const response=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',text:s,reference_hash:h})});
   const data=await response.json();
